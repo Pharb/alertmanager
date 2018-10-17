@@ -140,6 +140,22 @@ func (a *Alerts) GetPending() provider.AlertIterator {
 	return provider.NewAlertIterator(ch, done, nil)
 }
 
+func (a *Alerts) CountPending(status model.AlertStatus) int {
+	count := 0
+	alerts := a.GetPending()
+	defer alerts.Close()
+
+	for a := range alerts.Next() {
+		if err := alerts.Err(); err != nil {
+			break
+		}
+		if a.Status() == status {
+			count++
+		}
+	}
+	return count
+}
+
 // Get returns the alert for a given fingerprint.
 func (a *Alerts) Get(fp model.Fingerprint) (*types.Alert, error) {
 	return a.alerts.Get(fp)

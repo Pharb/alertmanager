@@ -81,6 +81,8 @@ type Alerts interface {
 	// GetPending returns an iterator over all alerts that have
 	// pending notifications.
 	GetPending() AlertIterator
+	// CountPending counts pending alerts matching the given status
+	CountPending(model.AlertStatus) int
 	// Get returns the alert for a given fingerprint.
 	Get(model.Fingerprint) (*types.Alert, error)
 	// Put adds the given alert to the set.
