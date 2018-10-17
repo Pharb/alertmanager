@@ -290,6 +290,45 @@ func TestAlertsGetPending(t *testing.T) {
 	}
 }
 
+func TestAlertsCountPending(t *testing.T) {
+	marker := types.NewMarker()
+	alerts, err := NewAlerts(context.Background(), marker, 30*time.Minute, log.NewNopLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checkCount := func(status model.AlertStatus, expected int) {
+		count := alerts.CountPending(status)
+		if !(count == expected) {
+			t.Errorf("Unexpected alert count %d instead of %d for status '%s'", count, expected, status)
+		}
+	}
+
+	tResolved := time.Now().Add(-time.Second)
+	tFiring := time.Now().Add(time.Second)
+
+	a1 := types.Alert(*alert1)
+	a2 := types.Alert(*alert2)
+
+	a1.EndsAt = tFiring
+	a2.EndsAt = tFiring
+
+	checkCount(model.AlertResolved, 0)
+	checkCount(model.AlertFiring, 0)
+
+	if err := alerts.Put(&a1, &a2); err != nil {
+		t.Fatalf("Insert failed: %s", err)
+	}
+
+	checkCount(model.AlertResolved, 0)
+	checkCount(model.AlertFiring, 2)
+
+	a1.EndsAt = tResolved
+
+	checkCount(model.AlertResolved, 1)
+	checkCount(model.AlertFiring, 1)
+}
+
 func TestAlertsGC(t *testing.T) {
 	marker := types.NewMarker()
 	alerts, err := NewAlerts(context.Background(), marker, 200*time.Millisecond, log.NewNopLogger())

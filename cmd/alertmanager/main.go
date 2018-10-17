@@ -40,6 +40,7 @@ import (
 	"github.com/prometheus/alertmanager/inhibit"
 	"github.com/prometheus/alertmanager/nflog"
 	"github.com/prometheus/alertmanager/notify"
+	"github.com/prometheus/alertmanager/provider"
 	"github.com/prometheus/alertmanager/provider/mem"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/template"
@@ -47,6 +48,7 @@ import (
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/common/version"
@@ -105,25 +107,43 @@ func instrumentHandler(handlerName string, handler http.HandlerFunc) http.Handle
 	)
 }
 
-func newAlertMetricByState(marker types.Marker, st types.AlertState) prometheus.GaugeFunc {
+func newAlertsMetric(state string, function func() float64) prometheus.GaugeFunc {
 	return prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Name:        "alertmanager_alerts",
 			Help:        "How many alerts by state.",
-			ConstLabels: prometheus.Labels{"state": string(st)},
+			ConstLabels: prometheus.Labels{"state": state},
 		},
-		func() float64 {
-			return float64(marker.Count(st))
-		},
+		function,
 	)
 }
 
+func newMarkerMetricByState(marker types.Marker, st types.AlertState) prometheus.GaugeFunc {
+	return newAlertsMetric(string(st), func() float64 {
+		return float64(marker.Count(st))
+	})
+}
+
 func newMarkerMetrics(marker types.Marker) {
-	alertsActive = newAlertMetricByState(marker, types.AlertStateActive)
-	alertsSuppressed = newAlertMetricByState(marker, types.AlertStateSuppressed)
+	alertsActive = newMarkerMetricByState(marker, types.AlertStateActive)
+	alertsSuppressed = newMarkerMetricByState(marker, types.AlertStateSuppressed)
 
 	prometheus.MustRegister(alertsActive)
 	prometheus.MustRegister(alertsSuppressed)
+}
+
+func newAlertsMetricByState(alerts provider.Alerts, status model.AlertStatus) prometheus.GaugeFunc {
+	return newAlertsMetric(string(status), func() float64 {
+		return float64(alerts.CountPending(status))
+	})
+}
+
+func newAlertsMetrics(alerts provider.Alerts) {
+	alertsFiring := newAlertsMetricByState(alerts, model.AlertFiring)
+	alertsResolved := newAlertsMetricByState(alerts, model.AlertResolved)
+
+	prometheus.MustRegister(alertsFiring)
+	prometheus.MustRegister(alertsResolved)
 }
 
 const defaultClusterAddr = "0.0.0.0:9094"
@@ -280,6 +300,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer alerts.Close()
+	newAlertsMetrics(alerts)
 
 	var (
 		inhibitor *inhibit.Inhibitor
